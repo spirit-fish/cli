@@ -48,7 +48,6 @@ const program = new Command();
 program.version(pkg.version);
 
 // TODO: Should be able to list tokens and revoke them
-// TODO: Load all files before syncing them
 // TODO: invalidations after succesful deploy'n'activate, or activate
 
 program
