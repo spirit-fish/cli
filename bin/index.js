@@ -4,7 +4,7 @@
 const { Command } = require('commander');
 const { v4: uuidv4 } = require('uuid');
 const open = require('open');
-const http = require('http');
+const https = require('https');
 const url = require('url');
 const path = require('path');
 const devcert = require('devcert');
@@ -68,8 +68,11 @@ program
 
     let timeout;
     const attempt = uuidv4();
-    const ssl = await devcert.certificateFor('localhost');
-    const server = http.createServer(ssl, async (req, res) => {
+    const ssl = await devcert.certificateFor('spirit-fish.cli', {
+      getCaPath: true,
+      getCaBuffer: true
+    });
+    const server = https.createServer(ssl, async (req, res) => {
       const parsed = url.parse(req.url, true);
       const token = parsed.query.token;
       const returnedAttempt = parsed.query.attempt;
@@ -78,10 +81,11 @@ program
         storeCredentials({ token });
         say(Tones.SUCCESS, `You've been authenticated successfully!`);
         res.writeHead(204);
-        res.end();
+        res.end("ok");
       } else {
         say(Tones.ERROR, `The authentication request failed. Please try again.`);
         res.writeHead(401);
+        res.end("error");
       }
 
       // In any case, shut down our server
@@ -336,9 +340,9 @@ program
       bunny.storage._baseConfig.headers = { AccessKey: data.storagezone.password };
       await attemptActivateDeployment(bunny, results, storagezoneName, hash);
     } catch(e) {
+      console.log(e);
       Sentry.captureException(e);
     } finally {
-      console.log(e);
       transaction.finish();
       if (results.input.deploymentId) {
         await SpiritFish.deploymentUpdate(token, rendererId, results.input.deploymentId, { results });
