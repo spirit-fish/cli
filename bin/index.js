@@ -265,6 +265,7 @@ program
         encoding: 'hex',
         folders: { exclude: ['node_modules', '.git'] }
       });
+      results.operations.deploy.hash = hash;
 
       Sentry.addBreadcrumb({ message: "WILL_REGISTER_DEPLOYMENT_WITH_SERVER", level: Sentry.Severity.Info });
       const data = await SpiritFish.deploymentCreate(token, rendererId, { hash, results });
