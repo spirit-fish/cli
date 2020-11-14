@@ -2,7 +2,7 @@
 
 ## Spirit Fish: A futuristic environment for your browser-based JS apps
 
-> Spirit Fish is a deployment and rendering environment backed by a powerful CDN. Our approach is different to Vercel or Netlify in that we leverage the power of the browser to server render any type JS of project, and cache the result at the edge. No buy in to heavy-handed frameworks or expensive build platforms necessary!
+> Spirit Fish is a deployment and rendering environment backed by a powerful CDN. Our approach is different to [Vercel](https://vercel.com/) or [Netlify](https://www.netlify.com/) in that we leverage the power of the browser to server render any type JS of project, and cache the resulting HTML in our edge cache. No buy in to heavy-handed frameworks or expensive build platforms necessary!
 >
 > Build your JS project how you like - if it works in the browser, it works with Spirit Fish. Simply create a renderer in our dashboard, push your build via our CLI, and point your domain at our records.
 >
@@ -44,7 +44,8 @@ Use our dashboard to setup your renderer, configure transforms, and setup your D
 
 ### [Deployments](https://www.spirit.fish/features/deployments)
 
-Use our zero-downtime deployments infrastructure to continuously push builds to your renderers.
+Use our zero-downtime deployments infrastructure to continuously push builds to your renderers, via our CLI, or in a CI system like [Github Actions](https://github.com/features/actions) or [Circle CI](https://circleci.com/).
+
 - Free hosting with all Renderers
 - Instant Rollbacks
 - Zero Downtime Deploys
@@ -53,7 +54,7 @@ Use our zero-downtime deployments infrastructure to continuously push builds to 
 
 ### [On-the-fly Server Rendering](https://www.spirit.fish/features/rendering)
 
-Our approach to server rendering your apps is on-the-fly, using a headless browser
+We server render your on-the-fly, using a headless browser via our serverless infrastructure.
 
 - No Code Changes Required
 - CDN Backed Renders
@@ -64,7 +65,8 @@ Our approach to server rendering your apps is on-the-fly, using a headless brows
 
 ### [Global Content Delivery](https://www.spirit.fish/features/cdn)
 
-We cache your server-rendered pages, and static assets in our powerful edge cache.
+We cache your server rendered pages, and static assets in our powerful edge cache.
+
 - 29 countries across 6 continents
 - 43 points of presence worldwide
 - Automatic Brotli Compression
