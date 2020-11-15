@@ -12,6 +12,8 @@ const updateNotifier = require('update-notifier');
 const pkg = require('../package.json');
 const { hashElement } = require('folder-hash');
 const { Bunny, HttpBase } = require("bunnycdn-node");
+const ora = require('ora');
+const chalk = require('chalk');
 
 // Sentry
 const Sentry = require("@sentry/node");
@@ -19,7 +21,7 @@ const Tracing = require("@sentry/tracing");
 
 // Internal
 const SpiritFish = require('../lib/spiritFish');
-const { say, Tones } = require('../lib/say');
+const { TerminalColors } = require('../lib/constants');
 const {
   storeCredentials,
   fetchCredentials,
@@ -47,8 +49,8 @@ if (dev) SpiritFish.HATCHERY_URL = `http://www.spiritfish.localhost:3000`;
 const program = new Command();
 program.version(pkg.version);
 
-// TODO: Should be able to list tokens and revoke them
-// TODO: invalidations after succesful deploy'n'activate, or activate
+// TODO: I should be able to list tokens and revoke them
+// TODO: I should be able to give a label to tokens
 
 program
   .option('-t, --token <token>', 'Pass a token instead of using our auth flow. Useful for CI tools.');
@@ -57,12 +59,20 @@ program
   .command('authenticate')
   .description('Authenticate your CLI with Spirit Fish')
   .action(async () => {
-    if (program.opts().token) return say(Tones.WARN, `You may not pass a --token to this command.`);
+    const spinner = ora('Authenticating via your browser...').start();
+
+    if (program.opts().token) {
+      return spinner.fail(
+        chalk.hex(TerminalColors.ORANGE)("You may not pass a --token to this command.")
+      );
+    }
 
     const existingCredentials = fetchCredentials();
     if (existingCredentials && existingCredentials.token) {
       if (await testToken(existingCredentials.token)) {
-        return say(Tones.WARN, `You have a valid token. Use "spirit-fish unauthenticate" if you'd like to change users.`);
+        return spinner.warn(
+          chalk.hex(TerminalColors.ORANGE)("You are already authenticated. Use `spirit-fish unauthenticate` if you'd like to change users.")
+        );
       }
     }
 
@@ -79,11 +89,11 @@ program
 
       if (returnedAttempt === attempt) {
         storeCredentials({ token });
-        say(Tones.SUCCESS, `You've been authenticated successfully!`);
+        spinner.succeed(`${spinner.text} ${chalk.hex(TerminalColors.GREEN).bold('done!')}`);
         res.writeHead(204);
         res.end("ok");
       } else {
-        say(Tones.ERROR, `The authentication request failed. Please try again.`);
+        spinner.fail(chalk.hex(TerminalColors.ORANGE)('Failed - please try again.'));
         res.writeHead(401);
         res.end("error");
       }
@@ -96,9 +106,8 @@ program
     }).listen(3474);
 
     await open(`${SpiritFish.HATCHERY_URL}/auth/cli?attempt=${attempt}`);
-    say(Tones.INFO, `Waiting for browser auth...`);
     timeout = setTimeout(function() {
-      say(Tones.WARNING, `Browser auth timed out. Please try again.`);
+      spinner.fail(chalk.hex(TerminalColors.ORANGE)('Timed out - please try again.'));
       server.close()
     }, 30000);
   });
@@ -107,21 +116,27 @@ program
   .command('unauthenticate')
   .description('Unauthenticate your Spirit Fish CLI')
   .action(async () => {
-    if (program.opts().token) return say(Tones.WARN, `You may not pass a --token to this command.`);
+    const spinner = ora('Unauthenticating...').start();
+    if (program.opts().token) {
+      return spinner.fail(
+        chalk.hex(TerminalColors.ORANGE)('You may not pass a --token to this command.')
+      );
+    }
     storeCredentials({ token: null });
-    say(Tones.SUCCESS, `Unauthenticated successfully.`);
+    return spinner.succeed(`Unauthenticating... ${chalk.hex(TerminalColors.GREEN).bold('done!')}`);
   });
 
 program
   .command('whoami')
   .description('Check the current token owner')
   .action(async () => {
+    const spinner = ora('Hello...').start();
     const token = program.opts().token || fetchCredentials().token;
     const currentUser = await testToken(token);
     if (currentUser) {
-      return say(Tones.INFO, `Hello, ${currentUser.email}!`);
+      return spinner.succeed(`${spinner.text} ${chalk.hex(TerminalColors.GREEN).bold(currentUser.email)}!`);
     } else {
-      return say(Tones.WARN, `Invalid auth. Please call "spirit-fish authenticate" or pass a --token`);
+      return spinner.fail(chalk.hex(TerminalColors.ORANGE)("Invalid auth. Please call `spirit-fish authenticate` or pass a --token"));
     }
   });
 
@@ -129,21 +144,21 @@ program
   .command('token')
   .description('Generate a token for use with CI and the --token param')
   .action(async () => {
-    const transaction = Sentry.startTransaction({
-      op: "Generate Token",
-      name: "Generate a Token",
-    });
+    const transaction = Sentry.startTransaction({ op: "Generate Token", name: "Generate a Token" });
+    const spinner = ora('Generating token...').start();
 
     const token = program.opts().token || fetchCredentials().token;
-    if (!await testToken(token)) return say(Tones.WARN, `Invalid auth. Please call "spirit-fish authenticate or pass a --token`);
+    if (!await testToken(token)) {
+      return spinner.fail(chalk.hex(TerminalColors.ORANGE)("Invalid auth. Please call `spirit-fish authenticate` or pass a --token"));
+    }
 
     try {
       const data = await SpiritFish.tokenCreate(token);
-      say(Tones.WARN, `Please record this token! For security reasons it can not be retrieved again:`);
-      say(Tones.SUCCESS, `Token Created: ${data.token}`);
+      spinner.succeed(`Please record this token - for security reasons it can not be retrieved again.`);
+      console.log(`Token: ${chalk.hex(TerminalColors.GREEN).bold(data.token)}`);
     } catch(e) {
-      console.log(e);
-      say(Tones.WARN, `Error creating token`);
+      const message = (e && e.message) ? e.message : "Error. Please try again.";
+      spinner.fail(chalk.hex(TerminalColors.ORANGE)(message));
       Sentry.captureException(e);
     } finally {
       transaction.finish();
@@ -155,21 +170,21 @@ program
   .option('-p, --paths <paths>', 'A comma seperated list of paths to invalidate. Supports wildcards.')
   .description('Invalidate paths in your renderers cache to force a re-render')
   .action(async (rendererId, args) => {
-    const transaction = Sentry.startTransaction({
-      op: "Invalidate Renderer",
-      name: "Invalidate pages from Renderer",
-    });
+    const transaction = Sentry.startTransaction({ op: "Invalidate Renderer", name: "Invalidate pages from Renderer" });
+    const spinner = ora('Invalidating...').start();
 
     const token = program.opts().token || fetchCredentials().token;
-    if (!await testToken(token)) return say(Tones.WARN, `Invalid auth. Please call "spirit-fish authenticate or pass a --token`);
+    if (!await testToken(token)) {
+      return spinner.fail(chalk.hex(TerminalColors.ORANGE)("Invalid auth. Please call `spirit-fish authenticate` or pass a --token"));
+    }
 
     const paths = args.paths || '*';
     try {
       const invalidation = await SpiritFish.invalidationCreate(token, rendererId, paths);
-      say(Tones.SUCCESS, `Invalidated paths: ${paths}`);
+      return spinner.succeed(`${spinner.text} ${chalk.hex(TerminalColors.GREEN).bold('done!')}`);
     } catch(e) {
-      console.log(e);
-      say(Tones.WARN, `Error invalidating paths: ${paths}`);
+      const message = (e && e.message) ? e.message : "Error. Please try again.";
+      spinner.fail(chalk.hex(TerminalColors.ORANGE)(message));
       Sentry.captureException(e);
     } finally {
       transaction.finish();
@@ -180,19 +195,23 @@ program
   .command('renderers')
   .description('List all of your renderers')
   .action(async () => {
-    const transaction = Sentry.startTransaction({
-      op: "List Renderers",
-      name: "List all Renderers",
-    });
+    const transaction = Sentry.startTransaction({ op: "List Renderers", name: "List all Renderers" });
+    const spinner = ora('Loading...').start();
 
     const token = program.opts().token || fetchCredentials().token;
-    if (!await testToken(token)) return say(Tones.WARN, `Invalid auth. Please call "spirit-fish authenticate or pass a --token`);
+    if (!await testToken(token)) {
+      return spinner.fail(chalk.hex(TerminalColors.ORANGE)("Invalid auth. Please call `spirit-fish authenticate` or pass a --token"));
+    }
 
     try {
       const renderers = await SpiritFish.renderersIndex(token);
-      renderers.forEach(r => say(Tones.INFO, `${r.id} ${r.nickname}`));
+      spinner.stop();
+      renderers.forEach(r => {
+        console.log(`🐠 ${r.id} - ${chalk.hex(TerminalColors.ORANGE)(`"${r.nickname}"`)}`)
+      });
     } catch(e) {
-      console.log(e);
+      const message = (e && e.message) ? e.message : "Error. Please try again.";
+      spinner.fail(chalk.hex(TerminalColors.ORANGE)(message));
       Sentry.captureException(e);
     } finally {
       transaction.finish();
@@ -203,23 +222,28 @@ program
   .command('deployments <renderer_id>')
   .description('List all of your deployments')
   .action(async (rendererId) => {
-    const transaction = Sentry.startTransaction({
-      op: "List Deployments",
-      name: "List all Deployments for Renderer",
-    });
+    const transaction = Sentry.startTransaction({ op: "List Deployments", name: "List all Deployments for Renderer" });
+    const spinner = ora('Loading...').start();
 
     const token = program.opts().token || fetchCredentials().token;
-    if (!await testToken(token)) return say(Tones.WARN, `Invalid auth. Please call "spirit-fish authenticate or pass a --token`);
+    if (!await testToken(token)) {
+      return spinner.fail(chalk.hex(TerminalColors.ORANGE)("Invalid auth. Please call `spirit-fish authenticate` or pass a --token"));
+    }
 
     try {
       const data = await SpiritFish.rendererShow(token, rendererId);
-      if (!data.storagezone) return say(Tones.WARN, `Never deployed.`);
+      if (!data.storagezone) {
+        return spinner.fail(chalk.hex(TerminalColors.ORANGE)("Never deployed."));
+      }
 
       const bunny = new Bunny();
       bunny.storage._baseConfig.headers = { AccessKey: data.storagezone.password };
 
       const deploymentHashes = await bunny.storage.get(`${data.storagezone.name}/__SPIRIT_FISH_DEPLOYMENTS__`);
-      if (deploymentHashes.lenth === 0) return say(Tones.WARN, `No deployments found`);
+      if (deploymentHashes.lenth === 0) {
+        return spinner.fail(chalk.hex(TerminalColors.ORANGE)("No deployments found"));
+      }
+      spinner.stop();
 
       const currentDeploymentHash = await fetchCurrentDeployment(bunny, data.storagezone.name);
       const sorted = deploymentHashes.sort(function(a, b) {
@@ -231,10 +255,15 @@ program
           createdAt: h.DateCreated
         }
       }).forEach(h => {
-        say(h.active? Tones.SUCCESS : Tones.INFO, `${h.version} ${h.createdAt}`)
+        if (h.active) {
+          console.log(`🐠 ${chalk.hex(TerminalColors.GREEN)(`${h.version} - ${h.createdAt}`)}`)
+        } else {
+          console.log(`➖ ${chalk.hex(TerminalColors.ORANGE)(`${h.version} - ${h.createdAt}`)}`)
+        }
       });
     } catch(e) {
-      console.log(e);
+      const message = (e && e.message) ? e.message : "Error. Please try again.";
+      spinner.fail(chalk.hex(TerminalColors.ORANGE)(message));
       Sentry.captureException(e);
     } finally {
       transaction.finish();
@@ -246,17 +275,17 @@ program
   .option('-a, --activate', 'Set the version live immediately')
   .description('Push a new version of your project to a renderer')
   .action(async (rendererId, dir, args) => {
-    const transaction = Sentry.startTransaction({
-      op: "Deploy",
-      name: "Deploy a Version",
-    });
+    const transaction = Sentry.startTransaction({ op: "Deploy", name: "Deploy a Version" });
+    let spinner = ora(`Deploying ${dir}...`).start();
 
     const token = program.opts().token || fetchCredentials().token;
-    if (!await testToken(token)) return say(Tones.WARN, `Invalid auth. Please call "spirit-fish authenticate or pass a --token`);
+    if (!await testToken(token)) {
+      return spinner.fail(chalk.hex(TerminalColors.ORANGE)("Invalid auth. Please call `spirit-fish authenticate` or pass a --token"));
+    }
 
     const results = {
       input: { rendererId, dir, activate: args.activate },
-      operations: { deploy: { files: [], warnings: [] } }
+      operations: { deploy: { warnings: [] } }
     };
     if (args.activate) results.operations.activate = { warnings: [] };
 
@@ -269,39 +298,40 @@ program
 
       Sentry.addBreadcrumb({ message: "WILL_REGISTER_DEPLOYMENT_WITH_SERVER", level: Sentry.Severity.Info });
       const data = await SpiritFish.deploymentCreate(token, rendererId, { hash, results });
-      Sentry.addBreadcrumb({ message: "DID_REGISTER_DEPLOYMENT_WITH_SERVER", level: Sentry.Severity.Info });
-
       results.input.deploymentId = data.id;
-      const storagezoneName = data.storagezone.name;
+      Sentry.addBreadcrumb({ message: "DID_REGISTER_DEPLOYMENT_WITH_SERVER", level: Sentry.Severity.Info });
 
       const bunny = new Bunny();
       bunny.storage._baseConfig.headers = { AccessKey: data.storagezone.password };
-
       Sentry.addBreadcrumb({ message: "WILL_DEPLOY_VERSION", level: Sentry.Severity.Info });
-      say(Tones.INFO, `Deploying ${dir}...`);
 
       const deployResult = await syncFolderToStorage(
         bunny,
-        storagezoneName,
+        data.storagezone.name,
         path.join(process.cwd(), dir),
         `__SPIRIT_FISH_DEPLOYMENTS__/${hash}`
       );
 
       if (deployResult.status === "ok") {
-        say(Tones.SUCCESS, `Deployed v.${hash}`);
+        spinner.succeed(`${spinner.text} ${chalk.hex(TerminalColors.GREEN).bold(`Deployed v.${hash}`)}`);
         Sentry.addBreadcrumb({ message: "DID_DEPLOY_VERSION", level: Sentry.Severity.Info });
       } else {
-        say(Tones.WARN, `Deployment failed: ${deployResult.reason}`);
+        spinner.fail(`${spinner.text} ${chalk.hex(TerminalColors.ORANGE)(`Deployment failed: ${deployResult.reason}`)}`);
         Sentry.addBreadcrumb({ message: "DEPLOY_VERSION_DID_FAIL", level: Sentry.Severity.Warning });
         results.operations.deploy.warnings = [...results.operations.deploy.warnings, deployResult.reason];
       }
 
       if (deployResult.status === "ok" && args.activate) {
-        await attemptActivateDeployment(bunny, results, storagezoneName, hash);
+        spinner = ora(`Activating ${hash}...`).start();
+        await attemptActivateDeployment(bunny, results, data.storagezone.name, hash, spinner);
       }
     } catch(e) {
-      console.log(e);
-      Sentry.captureException(e);
+      const message = (e && e.message) ? e.message : "Error. Please try again.";
+      spinner.fail(chalk.hex(TerminalColors.ORANGE)(message));
+      Sentry.withScope(scope => {
+        scope.setExtras(results);
+        Sentry.captureException(e);
+      });
     } finally {
       transaction.finish();
       if (results.input.deploymentId) {
@@ -314,15 +344,14 @@ program
   .command('activate <renderer_id> <version>')
   .description(`Set an existing deployment live`)
   .action(async (rendererId, hash) => {
-    const transaction = Sentry.startTransaction({
-      op: "Activate",
-      name: "Activate a Version",
-    });
+    const transaction = Sentry.startTransaction({ op: "Activate", name: "Activate a Version" });
+    if (hash.startsWith('v.')) hash = hash.replace('v.', '');
+    const spinner = ora(`Activating v.${hash}...`).start();
 
     const token = program.opts().token || fetchCredentials().token;
-    if (!await testToken(token)) return say(Tones.WARN, `Invalid auth. Please call "spirit-fish authenticate or pass a --token`);
-
-    if (hash.startsWith('v.')) hash = hash.replace('v.', '');
+    if (!await testToken(token)) {
+      return spinner.fail(chalk.hex(TerminalColors.ORANGE)("Invalid auth. Please call `spirit-fish authenticate` or pass a --token"));
+    }
 
     const results = {
       input: { rendererId, hash },
@@ -332,17 +361,19 @@ program
     try {
       Sentry.addBreadcrumb({ message: "WILL_REGISTER_DEPLOYMENT_WITH_SERVER", level: Sentry.Severity.Info });
       const data = await SpiritFish.deploymentCreate(token, rendererId, { hash, results });
-      Sentry.addBreadcrumb({ message: "DID_REGISTER_DEPLOYMENT_WITH_SERVER", level: Sentry.Severity.Info });
-
       results.input.deploymentId = data.id;
-      const storagezoneName = data.storagezone.name;
+      Sentry.addBreadcrumb({ message: "DID_REGISTER_DEPLOYMENT_WITH_SERVER", level: Sentry.Severity.Info });
 
       const bunny = new Bunny();
       bunny.storage._baseConfig.headers = { AccessKey: data.storagezone.password };
-      await attemptActivateDeployment(bunny, results, storagezoneName, hash);
+      await attemptActivateDeployment(bunny, results, data.storagezone.name, hash, spinner);
     } catch(e) {
-      console.log(e);
-      Sentry.captureException(e);
+      const message = (e && e.message) ? e.message : "Error. Please try again.";
+      spinner.fail(chalk.hex(TerminalColors.ORANGE)(message));
+      Sentry.withScope(scope => {
+        scope.setExtras(results);
+        Sentry.captureException(e);
+      });
     } finally {
       transaction.finish();
       if (results.input.deploymentId) {
@@ -355,15 +386,14 @@ program
   .command('flush <renderer_id> <version>')
   .description(`Flush a version from your renderer's storage`)
   .action(async (rendererId, hash) => {
-    const transaction = Sentry.startTransaction({
-      op: "Flush",
-      name: "Flush a Version",
-    });
+    const transaction = Sentry.startTransaction({ op: "Flush", name: "Flush a Version",});
+    if (hash.startsWith('v.')) hash = hash.replace('v.', '');
+    const spinner = ora(`Flushing v.${hash}...`).start();
 
     const token = program.opts().token || fetchCredentials().token;
-    if (!await testToken(token)) return say(Tones.WARN, `Invalid auth. Please call "spirit-fish authenticate or pass a --token`);
-
-    if (hash.startsWith('v.')) hash = hash.replace('v.', '');
+    if (!await testToken(token)) {
+      return spinner.fail(chalk.hex(TerminalColors.ORANGE)("Invalid auth. Please call `spirit-fish authenticate` or pass a --token"));
+    }
 
     const results = {
       input: { rendererId, hash },
@@ -378,10 +408,20 @@ program
 
       const bunny = new Bunny();
       bunny.storage._baseConfig.headers = { AccessKey: data.storagezone.password };
-      await attemptFlushDeployment(bunny, results, data.storagezone.name, hash);
+      const flushResult = await attemptFlushDeployment(bunny, results, data.storagezone.name, hash);
+      if (flushResult.status === "ok") {
+        spinner.succeed(`${spinner.text} ${chalk.hex(TerminalColors.GREEN).bold('done!')}`);
+      } else {
+        spinner.fail(`${spinner.text} ${chalk.hex(TerminalColors.ORANGE)(`Flush failed: ${flushResult.reason}`)}`);
+        results.operations.flush.warnings = [...results.operations.flush.warnings, flushResult.reason];
+      }
     } catch(e) {
-      console.log(e);
-      Sentry.captureException(e);
+      const message = (e && e.message) ? e.message : "Error. Please try again.";
+      spinner.fail(chalk.hex(TerminalColors.ORANGE)(message));
+      Sentry.withScope(scope => {
+        scope.setExtras(results);
+        Sentry.captureException(e);
+      });
     } finally {
       transaction.finish();
       if (results.input.deploymentId) {
