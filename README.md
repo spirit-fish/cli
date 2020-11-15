@@ -20,7 +20,7 @@ npm i -g @spirit-fish/cli && spirit-fish help
 
 Or head over to [spirit.fish](https://www.spirit.fish) to setup your first renderer.
 
-- Watch our [getting started video](TODO).
+- Watch our [getting started video](https://www.loom.com/share/830b78820a784cd2919171b828796071).
 - [Read the introduction](https://intercom.help/spirit-fish/en/) in our documentation.
 
 ## Table of contents
