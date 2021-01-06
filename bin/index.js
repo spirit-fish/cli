@@ -178,6 +178,12 @@ program
       return spinner.fail(chalk.hex(TerminalColors.ORANGE)("Invalid auth. Please call `spirit-fish authenticate` or pass a --token"));
     }
 
+    const resolvedRendererId = await SpiritFish.resolveRenderer(token, rendererId);
+    if (!resolvedRendererId) {
+      return spinner.fail(chalk.hex(TerminalColors.ORANGE)(`We could note find a renderer with the nickname "${rendererId}". Please check and try again.`));
+    }
+    rendererId = resolvedRendererId;
+
     const paths = args.paths || '*';
     try {
       const invalidation = await SpiritFish.invalidationCreate(token, rendererId, paths);
@@ -229,6 +235,12 @@ program
     if (!await testToken(token)) {
       return spinner.fail(chalk.hex(TerminalColors.ORANGE)("Invalid auth. Please call `spirit-fish authenticate` or pass a --token"));
     }
+
+    const resolvedRendererId = await SpiritFish.resolveRenderer(token, rendererId);
+    if (!resolvedRendererId) {
+      return spinner.fail(chalk.hex(TerminalColors.ORANGE)(`We could note find a renderer with the nickname "${rendererId}". Please check and try again.`));
+    }
+    rendererId = resolvedRendererId;
 
     try {
       const data = await SpiritFish.rendererShow(token, rendererId);
@@ -282,6 +294,12 @@ program
     if (!await testToken(token)) {
       return spinner.fail(chalk.hex(TerminalColors.ORANGE)("Invalid auth. Please call `spirit-fish authenticate` or pass a --token"));
     }
+
+    const resolvedRendererId = await SpiritFish.resolveRenderer(token, rendererId);
+    if (!resolvedRendererId) {
+      return spinner.fail(chalk.hex(TerminalColors.ORANGE)(`We could note find a renderer with the nickname "${rendererId}". Please check and try again.`));
+    }
+    rendererId = resolvedRendererId;
 
     const results = {
       input: { rendererId, dir, activate: args.activate },
@@ -353,6 +371,12 @@ program
       return spinner.fail(chalk.hex(TerminalColors.ORANGE)("Invalid auth. Please call `spirit-fish authenticate` or pass a --token"));
     }
 
+    const resolvedRendererId = await SpiritFish.resolveRenderer(token, rendererId);
+    if (!resolvedRendererId) {
+      return spinner.fail(chalk.hex(TerminalColors.ORANGE)(`We could note find a renderer with the nickname "${rendererId}". Please check and try again.`));
+    }
+    rendererId = resolvedRendererId;
+
     const results = {
       input: { rendererId, hash },
       operations: { activate: { warnings: [] } }
@@ -394,6 +418,12 @@ program
     if (!await testToken(token)) {
       return spinner.fail(chalk.hex(TerminalColors.ORANGE)("Invalid auth. Please call `spirit-fish authenticate` or pass a --token"));
     }
+
+    const resolvedRendererId = await SpiritFish.resolveRenderer(token, rendererId);
+    if (!resolvedRendererId) {
+      return spinner.fail(chalk.hex(TerminalColors.ORANGE)(`We could note find a renderer with the nickname "${rendererId}". Please check and try again.`));
+    }
+    rendererId = resolvedRendererId;
 
     const results = {
       input: { rendererId, hash },
